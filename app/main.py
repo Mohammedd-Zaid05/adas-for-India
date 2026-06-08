@@ -22,9 +22,13 @@ def health():
 @app.post("/detect")
 async def detect(file: UploadFile = File(...)):
     image_bytes = await file.read()
-    hazards = detect_hazards(image_bytes)
+    detection_result = detect_hazards(image_bytes)
+    hazards = detection_result["hazards"]
+    context = detection_result["context"]
+    
     return {
         "hazards": hazards,
         "total": len(hazards),
-        "safe": len(hazards) == 0
+        "safe": len(hazards) == 0,
+        "context": context
     }

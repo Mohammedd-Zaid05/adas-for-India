@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ADAS India</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0f1117;
+      color: #e2e8f0;
+      font-family: 'Segoe UI', sans-serif;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    header h1 {
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: #f8fafc;
+    }
+
+    header span {
+      font-size: 0.8rem;
+      background: #2563eb;
+      color: white;
+      padding: 2px 10px;
+      border-radius: 999px;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+    }
+
+    .upload-panel {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .upload-panel h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      color: #64748b;
+      font-size: 0.85rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .upload-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 2px dashed #2d3148;
+      border-radius: 10px;
+      padding: 2.5rem;
+      cursor: pointer;
+      transition: border-color 0.2s;
+      margin-bottom: 1.25rem;
+    }
+
+    .upload-box:hover { border-color: #2563eb; }
+
+    .upload-icon { font-size: 2rem; margin-bottom: 8px; }
+
+    .upload-text {
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: #cbd5e1;
+    }
+
+    .upload-hint {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    #preview {
+      display: none;
+      width: 100%;
+      max-height: 280px;
+      object-fit: cover;
+      border-radius: 8px;
+      margin-bottom: 1.25rem;
+      border: 1px solid #2d3148;
+    }
+
+    #analyzeBtn {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 0.75rem 2rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      width: 100%;
+    }
+
+    #analyzeBtn:hover:not(:disabled) { background: #1d4ed8; }
+
+    #analyzeBtn:disabled {
+      background: #1e293b;
+      color: #475569;
+      cursor: not-allowed;
+    }
+
+    .status-banner {
+      padding: 0.85rem 1.25rem;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .status-safe {
+      background: #14532d;
+      color: #86efac;
+      border: 1px solid #16a34a;
+    }
+
+    .status-danger {
+      background: #450a0a;
+      color: #fca5a5;
+      border: 1px solid #dc2626;
+    }
+
+    .section-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .hazard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .hazard-card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+
+    .hazard-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .hazard-object {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #f1f5f9;
+      text-transform: capitalize;
+    }
+
+    .severity-badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 999px;
+      text-transform: uppercase;
+    }
+
+    .severity-critical { background: #450a0a; color: #f87171; }
+    .severity-high     { background: #431407; color: #fb923c; }
+    .severity-medium   { background: #422006; color: #fbbf24; }
+    .severity-low      { background: #14532d; color: #4ade80; }
+
+    .hazard-type {
+      font-size: 0.85rem;
+      color: #64748b;
+      margin-bottom: 0.5rem;
+      text-transform: capitalize;
+    }
+
+    .confidence-bar-bg {
+      background: #0f1117;
+      border-radius: 999px;
+      height: 6px;
+      width: 100%;
+    }
+
+    .confidence-bar-fill {
+      height: 6px;
+      border-radius: 999px;
+      background: #2563eb;
+    }
+
+    .confidence-label {
+      font-size: 0.75rem;
+      color: #475569;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🛣️ ADAS India</h1>
+    <span>v1.0</span>
+  </header>
+
+  <main>
+    <div class="upload-panel">
+      <h2>Upload Road Image</h2>
+      <p class="subtitle">Supports JPG, PNG — dashcam screenshots work great</p>
+
+      <label class="upload-box" id="uploadLabel">
+        <input type="file" id="imageInput" accept="image/*" hidden />
+        <div class="upload-icon">📷</div>
+        <div class="upload-text">Click to choose an image</div>
+        <div class="upload-hint">or drag and drop here</div>
+      </label>
+
+      <img id="preview" src="" alt="Preview" />
+
+      <button id="analyzeBtn" disabled>Analyze for Hazards</button>
+    </div>
+
+    <div id="resultsSection" style="display:none;">
+      <div id="statusBanner" class="status-banner"></div>
+      <h2 class="section-title">Detected Hazards</h2>
+      <div id="hazardGrid" class="hazard-grid"></div>
+    </div>
+  </main>
+
+  <script>
+    const imageInput = document.getElementById('imageInput');
+    const preview = document.getElementById('preview');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const resultsSection = document.getElementById('resultsSection');
+    const statusBanner = document.getElementById('statusBanner');
+    const hazardGrid = document.getElementById('hazardGrid');
+
+    // ⚠️ Team leader: replace this URL with the live Render backend URL
+    const API_URL = 'http://localhost:8000/detect';
+
+    imageInput.addEventListener('change', function () {
+      const file = this.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        preview.src = e.target.result;
+        preview.style.display = 'block';
+        analyzeBtn.disabled = false;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    analyzeBtn.addEventListener('click', async function () {
+      const file = imageInput.files[0];
+      if (!file) return;
+
+      analyzeBtn.textContent = 'Analyzing...';
+      analyzeBtn.disabled = true;
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+        renderResults(data);
+
+      } catch (error) {
+        statusBanner.textContent = '⚠️ Could not reach the API. Make sure the backend is running.';
+        statusBanner.className = 'status-banner status-danger';
+        resultsSection.style.display = 'block';
+
+      } finally {
+        analyzeBtn.textContent = 'Analyze for Hazards';
+        analyzeBtn.disabled = false;
+      }
+    });
+
+    function renderResults(data) {
+      hazardGrid.innerHTML = '';
+
+      if (data.safe) {
+        statusBanner.textContent = '✅ Road looks safe — no critical hazards detected.';
+        statusBanner.className = 'status-banner status-safe';
+      } else {
+        statusBanner.textContent = `🚨 ${data.total} hazard(s) detected — drive with caution!`;
+        statusBanner.className = 'status-banner status-danger';
+      }
+
+      data.hazards.forEach(function (h) {
+        const card = document.createElement('div');
+        card.className = 'hazard-card';
+
+        const confidence = Math.round(h.confidence * 100);
+
+        card.innerHTML = `
+          <div class="hazard-card-top">
+            <span class="hazard-object">${h.object}</span>
+            <span class="severity-badge severity-${h.severity}">${h.severity}</span>
+          </div>
+          <div class="hazard-type">⚠️ ${h.hazard}</div>
+          <div class="confidence-bar-bg">
+            <div class="confidence-bar-fill" style="width: ${confidence}%;"></div>
+          </div>
+          <div class="confidence-label">Confidence: ${confidence}%</div>
+        `;
+
+        hazardGrid.appendChild(card);
+      });
+
+      resultsSection.style.display = 'block';
+    }
+  </script>
+
+</body>
+</html>
