@@ -143,6 +143,31 @@
       border: 1px solid #dc2626;
     }
 
+    .advisory-box {
+      border: 1px solid #2563eb;
+      background: #1e293b;
+      padding: 1rem;
+      border-radius: 10px;
+      margin-bottom: 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .advisory-text {
+      color: #94a3b8;
+      font-size: 0.95rem;
+    }
+
+    .risk-multiplier {
+      background: #2563eb;
+      color: white;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.8rem;
+    }
+
     .section-title {
       font-size: 1rem;
       font-weight: 600;
@@ -246,6 +271,7 @@
 
     <div id="resultsSection" style="display:none;">
       <div id="statusBanner" class="status-banner"></div>
+      <div id="advisoryContainer"></div>
       <h2 class="section-title">Detected Hazards</h2>
       <div id="hazardGrid" class="hazard-grid"></div>
     </div>
@@ -258,6 +284,7 @@
     const resultsSection = document.getElementById('resultsSection');
     const statusBanner = document.getElementById('statusBanner');
     const hazardGrid = document.getElementById('hazardGrid');
+    const advisoryContainer = document.getElementById('advisoryContainer');
 
     // ⚠️ Team leader: replace this URL with the live Render backend URL
     const API_URL = 'http://localhost:8000/detect';
@@ -307,6 +334,7 @@
 
     function renderResults(data) {
       hazardGrid.innerHTML = '';
+      advisoryContainer.innerHTML = '';
 
       if (data.safe) {
         statusBanner.textContent = '✅ Road looks safe — no critical hazards detected.';
@@ -314,6 +342,16 @@
       } else {
         statusBanner.textContent = `🚨 ${data.total} hazard(s) detected — drive with caution!`;
         statusBanner.className = 'status-banner status-danger';
+      }
+
+      if (data.context) {
+        const advisoryDiv = document.createElement('div');
+        advisoryDiv.className = 'advisory-box';
+        advisoryDiv.innerHTML = `
+          <div class="advisory-text">ℹ️ ${data.context.advisory}</div>
+          <div class="risk-multiplier">Risk: x${data.context.risk_multiplier}</div>
+        `;
+        advisoryContainer.appendChild(advisoryDiv);
       }
 
       data.hazards.forEach(function (h) {
