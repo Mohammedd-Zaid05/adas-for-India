@@ -24,12 +24,10 @@ def health():
 @app.post("/detect")
 async def detect(file: UploadFile = File(...)):
     image_bytes = await file.read()
-    detection_result = detect_hazards(image_bytes)
-    hazards = detection_result["hazards"]
-    context = detection_result["context"]
-    
+    result = detect_hazards(image_bytes)
+    hazards = result["hazards"]
+    context = result["context"]
     driver_score = calculate_driver_score(hazards, context)
-    
     return {
         "hazards": hazards,
         "total": len(hazards),
