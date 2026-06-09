@@ -1,6 +1,7 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from app.detector import detect_hazards
+from app.scorer import calculate_driver_score
 
 app = FastAPI(title="ADAS India API")
 
@@ -26,9 +27,12 @@ async def detect(file: UploadFile = File(...)):
     hazards = detection_result["hazards"]
     context = detection_result["context"]
     
+    driver_score = calculate_driver_score(hazards, context)
+    
     return {
         "hazards": hazards,
         "total": len(hazards),
         "safe": len(hazards) == 0,
-        "context": context
+        "context": context,
+        "driver_score": driver_score
     }
