@@ -2,6 +2,7 @@ from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from app.detector import detect_hazards
 from app.scorer import calculate_driver_score
+from app.voice import transcribe_audio
 
 app = FastAPI(title="ADAS India API")
 
@@ -36,3 +37,9 @@ async def detect(file: UploadFile = File(...)):
         "context": context,
         "driver_score": driver_score
     }
+
+@app.post("/voice")
+async def voice(file: UploadFile = File(...)):
+    audio_bytes = await file.read()
+    result = transcribe_audio(audio_bytes)
+    return result
