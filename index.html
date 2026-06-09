@@ -123,6 +123,65 @@
       cursor: not-allowed;
     }
 
+    .voice-controls {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+
+    .voice-btn {
+      flex: 1;
+      border: 1px solid #2d3148;
+      background: #111827;
+      color: #e2e8f0;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .voice-btn:hover:not(:disabled) {
+      background: #1f2937;
+      border-color: #2563eb;
+    }
+
+    .voice-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .voice-btn.recording {
+      background: #7f1d1d;
+      border-color: #dc2626;
+      color: #fca5a5;
+    }
+
+    .transcript-box {
+      margin-top: 1rem;
+      padding: 1rem;
+      border-radius: 10px;
+      border: 1px solid #2d3148;
+      background: #111827;
+      color: #cbd5e1;
+      display: none;
+    }
+
+    .transcript-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #94a3b8;
+      margin-bottom: 0.5rem;
+    }
+
+    .transcript-text {
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
     .status-banner {
       padding: 0.85rem 1.25rem;
       border-radius: 10px;
@@ -333,9 +392,29 @@
         <div class="upload-hint">or drag and drop here</div>
       </label>
 
-      <img id="preview" src="" alt="Preview" />
+      <div id="mediaContainer" style="position:relative;">
+        <img id="preview" src="" alt="Preview" />
+        <video id="videoPlayer" style="display:none; width:100%; max-height:280px; border-radius:8px; border:1px solid #2d3148;" autoplay muted playsinline></video>
+        <canvas id="overlayCanvas" style="position:absolute; left:0; top:0; display:none; pointer-events:none;"></canvas>
+      </div>
+
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <input type="file" id="videoInput" accept="video/*" />
+        <button id="startLiveBtn" class="voice-btn">Start Live Dashcam</button>
+        <button id="recordProcessedBtn" class="voice-btn">Start Recording Processed Video</button>
+        <button id="uploadFootageBtn" class="voice-btn">Upload Footage From Device</button>
+      </div>
 
       <button id="analyzeBtn" disabled>Analyze for Hazards</button>
+
+      <div class="voice-controls">
+        <button id="recordBtn" class="voice-btn">Start Voice Input</button>
+      </div>
+
+      <div id="transcriptBox" class="transcript-box">
+        <div class="transcript-label">Voice Transcript</div>
+        <div id="transcriptText" class="transcript-text"></div>
+      </div>
     </div>
 
     <div id="resultsSection" style="display:none;">
@@ -350,15 +429,28 @@
   <script>
     const imageInput = document.getElementById('imageInput');
     const preview = document.getElementById('preview');
+    const mediaContainer = document.getElementById('mediaContainer');
+    const videoInput = document.getElementById('videoInput');
+    const videoPlayer = document.getElementById('videoPlayer');
+    const overlayCanvas = document.getElementById('overlayCanvas');
+    const startLiveBtn = document.getElementById('startLiveBtn');
+    const recordProcessedBtn = document.getElementById('recordProcessedBtn');
+    const uploadFootageBtn = document.getElementById('uploadFootageBtn');
     const analyzeBtn = document.getElementById('analyzeBtn');
+    const recordBtn = document.getElementById('recordBtn');
     const resultsSection = document.getElementById('resultsSection');
     const statusBanner = document.getElementById('statusBanner');
     const hazardGrid = document.getElementById('hazardGrid');
     const advisoryContainer = document.getElementById('advisoryContainer');
     const scoreContainer = document.getElementById('scoreContainer');
+    const transcriptBox = document.getElementById('transcriptBox');
+    const transcriptText = document.getElementById('transcriptText');
 
-    // ⚠️ Team leader: replace this URL with the live Render backend URL
-    const API_URL = 'http://localhost:8000/detect';
+    let mediaRecorder = null;
+    let voiceChunks = [];
+
+    const API_URL = '/detect';
+    const VOICE_URL = '/voice';
 
     imageInput.addEventListener('change', function () {
       const file = this.files[0];
@@ -366,19 +458,87 @@
 
       const reader = new FileReader();
       reader.onload = function (e) {
+        // show image in media container
         preview.src = e.target.result;
         preview.style.display = 'block';
+        videoPlayer.style.display = 'none';
+        overlayCanvas.style.display = 'none';
         analyzeBtn.disabled = false;
       };
       reader.readAsDataURL(file);
     });
 
-    analyzeBtn.addEventListener('click', async function () {
-      const file = imageInput.files[0];
+    // video file upload (manual footage)
+    videoInput.addEventListener('change', function () {
+      const file = this.files[0];
       if (!file) return;
+      const url = URL.createObjectURL(file);
+      videoPlayer.srcObject = null;
+      videoPlayer.src = url;
+      videoPlayer.style.display = 'block';
+      preview.style.display = 'none';
+      overlayCanvas.style.display = 'block';
+      analyzeBtn.disabled = false;
+    });
 
+    // live dashcam toggle
+    let liveStream = null;
+    let liveInterval = null;
+    const SAMPLE_INTERVAL_MS = 800; // configurable sampling rate
+
+    startLiveBtn.addEventListener('click', async function () {
+      if (liveStream) {
+        // stop
+        liveStream.getTracks().forEach(t => t.stop());
+        liveStream = null;
+        videoPlayer.srcObject = null;
+        videoPlayer.style.display = 'none';
+        overlayCanvas.style.display = 'none';
+        startLiveBtn.textContent = 'Start Live Dashcam';
+        clearInterval(liveInterval);
+        liveInterval = null;
+        return;
+      }
+
+      try {
+        try {
+          liveStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        } catch (e) {
+          // some devices/browsers don't support facingMode; fall back to any camera
+          liveStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+        videoPlayer.srcObject = liveStream;
+        videoPlayer.style.display = 'block';
+        preview.style.display = 'none';
+        overlayCanvas.style.display = 'block';
+        startLiveBtn.textContent = 'Stop Live Dashcam';
+
+        // sample frames periodically and send to API
+        liveInterval = setInterval(() => captureAndSendFrame(videoPlayer), SAMPLE_INTERVAL_MS);
+      } catch (err) {
+        console.error('getUserMedia error:', err);
+        alert('Camera access denied or unavailable. Ensure the page is served from http(s://localhost) and camera permission is allowed.');
+      }
+    });
+
+    analyzeBtn.addEventListener('click', async function () {
       analyzeBtn.textContent = 'Analyzing...';
       analyzeBtn.disabled = true;
+
+      // If video is visible, analyze current frame; otherwise use selected image
+      if (videoPlayer.style.display === 'block') {
+        await captureAndSendFrame(videoPlayer);
+        analyzeBtn.textContent = 'Analyze for Hazards';
+        analyzeBtn.disabled = false;
+        return;
+      }
+
+      const file = imageInput.files[0];
+      if (!file) {
+        analyzeBtn.textContent = 'Analyze for Hazards';
+        analyzeBtn.disabled = false;
+        return;
+      }
 
       const formData = new FormData();
       formData.append('file', file);
@@ -391,6 +551,7 @@
 
         const data = await response.json();
         renderResults(data);
+        drawBoxesForImage(data, preview);
 
       } catch (error) {
         statusBanner.textContent = '⚠️ Could not reach the API. Make sure the backend is running.';
@@ -400,6 +561,299 @@
       } finally {
         analyzeBtn.textContent = 'Analyze for Hazards';
         analyzeBtn.disabled = false;
+      }
+    });
+
+    // capture current frame from a video element and send to API
+    async function captureAndSendFrame(videoEl) {
+      if (!videoEl || (videoEl.readyState < 2 && !videoEl.srcObject)) return;
+
+      const w = videoEl.videoWidth || videoEl.clientWidth;
+      const h = videoEl.videoHeight || videoEl.clientHeight;
+      if (w === 0 || h === 0) return;
+
+      const tmp = document.createElement('canvas');
+      tmp.width = w;
+      tmp.height = h;
+      const tctx = tmp.getContext('2d');
+      tctx.drawImage(videoEl, 0, 0, w, h);
+
+      return new Promise((resolve) => {
+        tmp.toBlob(async (blob) => {
+          if (!blob) return resolve();
+          const formData = new FormData();
+          formData.append('file', blob, 'frame.jpg');
+
+          try {
+            const resp = await fetch(API_URL, { method: 'POST', body: formData });
+            const data = await resp.json();
+            renderResults(data);
+            drawBoxesForVideo(data, videoEl, overlayCanvas);
+          } catch (e) {
+            console.warn('Frame send failed', e);
+          }
+          resolve();
+        }, 'image/jpeg', 0.8);
+      });
+    }
+
+    function drawBoxesForImage(data, imgEl) {
+      if (!data || !data.hazards) return;
+      latestDetections = data.hazards;
+      const canvas = overlayCanvas;
+      const rect = imgEl.getBoundingClientRect();
+      canvas.width = imgEl.naturalWidth;
+      canvas.height = imgEl.naturalHeight;
+      canvas.style.width = imgEl.clientWidth + 'px';
+      canvas.style.height = imgEl.clientHeight + 'px';
+      canvas.style.display = 'block';
+      canvas.style.left = imgEl.offsetLeft + 'px';
+      canvas.style.top = imgEl.offsetTop + 'px';
+      canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+      const ctx = canvas.getContext('2d');
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'lime';
+      ctx.font = '20px Arial';
+      ctx.fillStyle = 'lime';
+
+      data.hazards.forEach(h => {
+        if (!h.bbox) return;
+        const b = h.bbox;
+        ctx.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
+        ctx.fillText(`${h.hazard} ${h.confidence}`, b.x1 + 6, b.y1 + 22);
+      });
+    }
+
+    function drawBoxesForVideo(data, videoEl, canvas) {
+      if (!data || !data.hazards) return;
+      latestDetections = data.hazards;
+      // set canvas size to video natural size
+      const w = videoEl.videoWidth || videoEl.clientWidth;
+      const h = videoEl.videoHeight || videoEl.clientHeight;
+      canvas.width = w;
+      canvas.height = h;
+      canvas.style.width = videoEl.clientWidth + 'px';
+      canvas.style.height = videoEl.clientHeight + 'px';
+      canvas.style.display = 'block';
+      canvas.style.left = videoEl.offsetLeft + 'px';
+      canvas.style.top = videoEl.offsetTop + 'px';
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'lime';
+      ctx.font = '20px Arial';
+      ctx.fillStyle = 'lime';
+
+      const scaleX = canvas.width / videoEl.videoWidth || 1;
+      const scaleY = canvas.height / videoEl.videoHeight || 1;
+
+      data.hazards.forEach(h => {
+        if (!h.bbox) return;
+        const b = h.bbox;
+        const x = b.x1 * scaleX;
+        const y = b.y1 * scaleY;
+        const wbox = (b.x2 - b.x1) * scaleX;
+        const hbox = (b.y2 - b.y1) * scaleY;
+        ctx.strokeRect(x, y, wbox, hbox);
+        ctx.fillText(`${h.hazard} ${h.confidence}`, x + 6, y + 22);
+      });
+    }
+
+    // ----- Processed video recording -----
+    let latestDetections = null;
+    let mediaRecorderProcessed = null;
+    let processedChunks = [];
+    let recordingAnimationId = null;
+    let lastRecordedBlob = null;
+
+    recordProcessedBtn.addEventListener('click', async function () {
+      if (mediaRecorderProcessed && mediaRecorderProcessed.state === 'recording') {
+        mediaRecorderProcessed.stop();
+        recordProcessedBtn.textContent = 'Start Recording Processed Video';
+        return;
+      }
+
+      const sourceVideo = (videoPlayer.style.display === 'block') ? videoPlayer : null;
+      if (!sourceVideo || (sourceVideo.videoWidth === 0 && sourceVideo.readyState < 2)) {
+        alert('Start the live dashcam or load a video file first.');
+        return;
+      }
+
+      const recCanvas = document.createElement('canvas');
+      recCanvas.width = sourceVideo.videoWidth || sourceVideo.clientWidth;
+      recCanvas.height = sourceVideo.videoHeight || sourceVideo.clientHeight;
+      const rctx = recCanvas.getContext('2d');
+
+      processedChunks = [];
+      const stream = recCanvas.captureStream(25);
+      try {
+        mediaRecorderProcessed = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+      } catch (e) {
+        mediaRecorderProcessed = new MediaRecorder(stream);
+      }
+
+      mediaRecorderProcessed.ondataavailable = function (ev) {
+        if (ev.data && ev.data.size > 0) processedChunks.push(ev.data);
+      };
+
+      mediaRecorderProcessed.onstop = function () {
+        cancelAnimationFrame(recordingAnimationId);
+        const blob = new Blob(processedChunks, { type: 'video/webm' });
+        lastRecordedBlob = blob;
+        // preview the recorded processed video in the player
+        const recordedUrl = URL.createObjectURL(blob);
+        videoPlayer.srcObject = null;
+        videoPlayer.src = recordedUrl;
+        videoPlayer.style.display = 'block';
+        overlayCanvas.style.display = 'none';
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'processed_dashcam.webm';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        // auto-upload the recorded blob
+        uploadBlob(blob, 'processed_dashcam.webm');
+      };
+
+      mediaRecorderProcessed.start();
+      recordProcessedBtn.textContent = 'Stop Recording Processed Video';
+
+      function drawLoop() {
+        rctx.drawImage(sourceVideo, 0, 0, recCanvas.width, recCanvas.height);
+        if (latestDetections && latestDetections.length) {
+          rctx.lineWidth = Math.max(2, recCanvas.width / 200);
+          rctx.strokeStyle = 'lime';
+          rctx.font = `${Math.max(12, recCanvas.width/40)}px Arial`;
+          rctx.fillStyle = 'lime';
+          latestDetections.forEach(h => {
+            if (!h.bbox) return;
+            const b = h.bbox;
+            const x = b.x1;
+            const y = b.y1;
+            const w = b.x2 - b.x1;
+            const hh = b.y2 - b.y1;
+            rctx.strokeRect(x, y, w, hh);
+            rctx.fillText(`${h.hazard} ${h.confidence}`, x + 6, y + Math.min(24, recCanvas.width/40));
+          });
+        }
+        recordingAnimationId = requestAnimationFrame(drawLoop);
+      }
+      drawLoop();
+    });
+
+    // upload recorded or selected footage to backend
+    async function uploadBlob(blob, filename) {
+      if (!blob) return;
+      uploadFootageBtn.disabled = true;
+      uploadFootageBtn.textContent = 'Uploading...';
+      statusBanner.textContent = 'Uploading footage...';
+      statusBanner.className = 'status-banner';
+
+      const formData = new FormData();
+      formData.append('file', blob, filename || 'upload.webm');
+
+      try {
+        const resp = await fetch('/upload_video', { method: 'POST', body: formData });
+        const data = await resp.json();
+        if (data.success) {
+          statusBanner.textContent = 'Upload complete: ' + (data.path || 'saved');
+          statusBanner.className = 'status-banner status-safe';
+        } else {
+          statusBanner.textContent = 'Upload failed';
+          statusBanner.className = 'status-banner status-danger';
+        }
+      } catch (e) {
+        statusBanner.textContent = 'Upload failed: ' + (e.message || e);
+        statusBanner.className = 'status-banner status-danger';
+      } finally {
+        uploadFootageBtn.disabled = false;
+        uploadFootageBtn.textContent = 'Upload Footage';
+      }
+    }
+
+    uploadFootageBtn.addEventListener('click', async function () {
+      if (lastRecordedBlob) {
+        await uploadBlob(lastRecordedBlob, 'processed_dashcam.webm');
+      } else if (videoInput.files && videoInput.files[0]) {
+        await uploadBlob(videoInput.files[0], videoInput.files[0].name);
+      } else {
+        // No file chosen yet, so open the device file picker here.
+        videoInput.click();
+      }
+    });
+
+    // auto-upload when user selects a video file from device
+    videoInput.addEventListener('change', function () {
+      const file = this.files[0];
+      if (!file) return;
+      // show immediately in player
+      const url = URL.createObjectURL(file);
+      videoPlayer.srcObject = null;
+      videoPlayer.src = url;
+      videoPlayer.style.display = 'block';
+      preview.style.display = 'none';
+      overlayCanvas.style.display = 'block';
+      analyzeBtn.disabled = false;
+      // auto upload selected file
+      uploadBlob(file, file.name);
+    });
+
+    recordBtn.addEventListener('click', async function () {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        voiceChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = function (event) {
+          if (event.data.size > 0) {
+            voiceChunks.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = async function () {
+          stream.getTracks().forEach(track => track.stop());
+
+          const audioBlob = new Blob(voiceChunks, { type: 'audio/webm' });
+          const formData = new FormData();
+          formData.append('file', audioBlob, 'audio.wav');
+
+          recordBtn.textContent = 'Transcribing...';
+          recordBtn.disabled = true;
+
+          try {
+            const response = await fetch(VOICE_URL, {
+              method: 'POST',
+              body: formData
+            });
+
+            const data = await response.json();
+            transcriptBox.style.display = 'block';
+            transcriptText.textContent = data.success ? data.text : `Transcription failed: ${data.text}`;
+          } catch (error) {
+            transcriptBox.style.display = 'block';
+            transcriptText.textContent = 'Could not reach the voice API. Make sure the backend is running.';
+          } finally {
+            recordBtn.textContent = 'Start Voice Input';
+            recordBtn.disabled = false;
+            recordBtn.classList.remove('recording');
+          }
+        };
+
+        mediaRecorder.start();
+        recordBtn.textContent = 'Stop Recording';
+        recordBtn.classList.add('recording');
+      } catch (error) {
+        transcriptBox.style.display = 'block';
+        transcriptText.textContent = 'Microphone access was denied or is unavailable in this browser.';
       }
     });
 

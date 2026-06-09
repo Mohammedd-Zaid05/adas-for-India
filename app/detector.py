@@ -1,21 +1,15 @@
-from ultralytics import YOLO
 import cv2
-import numpy as np
 import datetime
+import logging
+
+import numpy as np
+from ultralytics import YOLO
+
+from app.config import DETECTION_CONFIDENCE_THRESHOLD, INDIA_HAZARD_MAP
 
 model = YOLO("yolov8n.pt")
 
-INDIA_HAZARD_MAP = {
-    "person": ("pedestrian", "high"),
-    "cow": ("cattle on road", "critical"),
-    "dog": ("animal on road", "medium"),
-    "bicycle": ("slow vehicle", "medium"),
-    "motorcycle": ("two-wheeler", "high"),
-    "bus": ("heavy vehicle", "medium"),
-    "truck": ("heavy vehicle", "medium"),
-    "car": ("vehicle", "low"),
-    "auto rickshaw": ("auto-rickshaw", "high"),
-}
+logger = logging.getLogger(__name__)
 
 def get_india_context():
     hour = datetime.datetime.now().hour
@@ -47,20 +41,37 @@ def get_india_context():
 def detect_hazards(image_bytes):
     np_arr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    if img is None:
+        logger.warning("Image decode failed; skipping hazard detection")
+        return {"hazards": [], "context": get_india_context()}
+
     results = model(img)[0]
     
     hazards = []
     for box in results.boxes:
         label = model.names[int(box.cls)]
         confidence = float(box.conf)
-        if label in INDIA_HAZARD_MAP and confidence > 0.4:
+        if label in INDIA_HAZARD_MAP and confidence >= DETECTION_CONFIDENCE_THRESHOLD:
             hazard_name, severity = INDIA_HAZARD_MAP[label]
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
             hazards.append({
                 "object": label,
                 "hazard": hazard_name,
                 "severity": severity,
                 "confidence": round(confidence, 2)
+                ,"bbox": {
+                    "x1": round(float(x1), 2),
+                    "y1": round(float(y1), 2),
+                    "x2": round(float(x2), 2),
+                    "y2": round(float(y2), 2)
+                }
             })
     
     context = get_india_context()
+    logger.info(
+        "Hazard detection complete: hazards=%s threshold=%.2f time_context=%s",
+        len(hazards),
+        DETECTION_CONFIDENCE_THRESHOLD,
+        context.get("time_context", "unknown"),
+    )
     return {"hazards": hazards, "context": context}
