@@ -243,6 +243,75 @@
       color: #475569;
       margin-top: 4px;
     }
+
+    /* Driver Score Section */
+    .score-section {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .score-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .score-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+    }
+
+    .score-main {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-bottom: 1rem;
+    }
+
+    .score-value {
+      font-size: 3.5rem;
+      font-weight: 800;
+      color: #f8fafc;
+      line-height: 1;
+    }
+
+    .score-max {
+      font-size: 1.2rem;
+      color: #475569;
+      font-weight: 600;
+    }
+
+    .rating-badge {
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+    }
+
+    .rating-excellent { background: #14532d; color: #4ade80; }
+    .rating-good      { background: #1e3a8a; color: #60a5fa; }
+    .rating-fair      { background: #713f12; color: #facc15; }
+    .rating-poor      { background: #7f1d1d; color: #f87171; }
+
+    .score-bar-bg {
+      background: #0f1117;
+      border-radius: 999px;
+      height: 12px;
+      width: 100%;
+    }
+
+    .score-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.6s ease-out;
+    }
   </style>
 </head>
 <body>
@@ -272,6 +341,7 @@
     <div id="resultsSection" style="display:none;">
       <div id="statusBanner" class="status-banner"></div>
       <div id="advisoryContainer"></div>
+      <div id="scoreContainer"></div>
       <h2 class="section-title">Detected Hazards</h2>
       <div id="hazardGrid" class="hazard-grid"></div>
     </div>
@@ -285,6 +355,7 @@
     const statusBanner = document.getElementById('statusBanner');
     const hazardGrid = document.getElementById('hazardGrid');
     const advisoryContainer = document.getElementById('advisoryContainer');
+    const scoreContainer = document.getElementById('scoreContainer');
 
     // ⚠️ Team leader: replace this URL with the live Render backend URL
     const API_URL = 'http://localhost:8000/detect';
@@ -335,6 +406,7 @@
     function renderResults(data) {
       hazardGrid.innerHTML = '';
       advisoryContainer.innerHTML = '';
+      scoreContainer.innerHTML = '';
 
       if (data.safe) {
         statusBanner.textContent = '✅ Road looks safe — no critical hazards detected.';
@@ -352,6 +424,34 @@
           <div class="risk-multiplier">Risk: x${data.context.risk_multiplier}</div>
         `;
         advisoryContainer.appendChild(advisoryDiv);
+      }
+
+      if (data.driver_score) {
+        const s = data.driver_score;
+        const scoreDiv = document.createElement('div');
+        scoreDiv.className = 'score-section';
+        
+        const ratingClass = `rating-${s.rating.toLowerCase()}`;
+        let barColor = '#2563eb'; // Default blue
+        if (s.rating === 'Excellent') barColor = '#4ade80';
+        if (s.rating === 'Good') barColor = '#60a5fa';
+        if (s.rating === 'Fair') barColor = '#facc15';
+        if (s.rating === 'Poor') barColor = '#f87171';
+
+        scoreDiv.innerHTML = `
+          <div class="score-header">
+            <span class="score-title">Driver Safety Score</span>
+            <span class="rating-badge ${ratingClass}">${s.rating}</span>
+          </div>
+          <div class="score-main">
+            <span class="score-value">${s.score}</span>
+            <span class="score-max">/100</span>
+          </div>
+          <div class="score-bar-bg">
+            <div class="score-bar-fill" style="width: ${s.score}%; background: ${barColor};"></div>
+          </div>
+        `;
+        scoreContainer.appendChild(scoreDiv);
       }
 
       data.hazards.forEach(function (h) {
